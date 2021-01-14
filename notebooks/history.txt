@@ -1,0 +1,178 @@
+%matplotlib inline
+
+import random
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from time import sleep
+from fbprophet import Prophet
+from bayes_opt import BayesianOptimization
+
+random.seed(42)
+np.random.seed(42)
+df = pd.read_csv("../data/CamUKWeather.csv", parse_dates=True)
+print("Shape:")
+print(df.shape)
+print("\nInfo:")
+print(df.info())
+print("\nSummary stats:")
+display(df.describe())
+print("\nRaw data:")
+df
+threshold = 2019
+df_test  = df[df['year'] >= threshold]
+df_train = df[df['year'] <  threshold]
+m = Prophet(growth='flat',
+            daily_seasonality=True,
+            weekly_seasonality=False,
+            yearly_seasonality=2)
+m.fit(df_train);
+forecast = m.predict(df_test)
+pd.concat([forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().reset_index(drop=True), 
+           df_test['y'].tail().reset_index(drop=True)], axis=1)
+fig1 = m.plot(forecast)
+fig2 = m.plot_components(forecast)
+from fbprophet.diagnostics import cross_validation, performance_metrics
+
+m = Prophet(growth='flat',
+            daily_seasonality=True,
+            weekly_seasonality=False,
+            yearly_seasonality=2)
+m.fit(df)
+
+df_cv = cross_validation(m,                                                  
+                         initial='90000 hours',
+                         period='1000 hours',
+                         horizon='1 hours')
+df_cv
+df_p = performance_metrics(df_cv)
+df_p[['horizon','rmse','mae','mape']]
+def prophet_f(daily_prior, yearly_prior, hum_prior, dp_prior, metric='rmse', period='1000 hours'):
+    """
+    Implements the prophet model to be optimised and performs cross-validation
+    
+    Args:
+        daily_prior:  daily seasonality prior scale
+        yearly_prior: yearly seasonality prior scale
+        hum_prior:    humidity regressor prior scale 
+        dp_prior:     dew.point regressor prior scale
+
+    Returns:
+        negative of root mean square error
+    """
+                     
+    m = Prophet(growth='flat',
+                weekly_seasonality=False)
+    
+    m.add_seasonality(name='daily',
+                      period=1,
+                      fourier_order=2,
+                      mode='multiplicative',
+                      prior_scale=10 ** daily_prior)
+    m.add_seasonality(name='yearly',
+                      period=365.25,
+                      fourier_order=2,
+                      mode='additive',
+                      prior_scale=10 ** yearly_prior)
+    
+    m.add_regressor('humidity',
+                    mode='multiplicative',
+                    prior_scale=10 ** hum_prior)
+    m.add_regressor('dew.point',
+                    mode='multiplicative',
+                    prior_scale=10 ** dp_prior)
+    
+    m.fit(df)
+    df_cv = cross_validation(m,                                                  
+                             initial='90000 hours',
+                             # period='15000 hours',
+                             # period='1000 hours',
+                             period=period,
+                             horizon='1 hours')
+    # df_p = performance_metrics(df_cv)
+    
+    if metric == 'rmse':
+        # ((df.p - df.x) ** 2).mean() ** .5
+        # return - df_p['rmse'].mean()
+        df_cv_rmse = ((df_cv.y - df_cv.yhat) ** 2).mean() ** .5
+        return - df_cv_rmse
+    else:
+        df_p = performance_metrics(df_cv)
+        return m, df_p[['horizon','rmse','mae','mape']]
+# daily_prior_scale calculated as 10 ** daily_prior in prophet_f
+pbounds = {'daily_prior': (-2, 2), 'yearly_prior': (-2, 2),
+           'hum_prior':   (-2, 2), 'dp_prior':     (-2, 2)}
+
+optimizer = BayesianOptimization(
+    f=prophet_f,
+    pbounds=pbounds,
+    verbose=2,  # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
+    random_state=1
+)
+
+optimizer.maximize(
+    init_points=10,
+    n_iter=10)
+
+print("\nMax params:")
+print(optimizer.max)
+# daily_prior_scale calculated as 10 ** daily_prior in prophet_f
+pbounds_red = {'daily_prior': (-2, 2), 'yearly_prior': (2, 2),
+               'hum_prior':   (-2, -2),    'dp_prior': (-2, -2)}
+
+optimizerby setting new bounds to optimise only daily_prior.set_bounds(new_bounds=pbounds_red)
+
+optimizer.maximize(
+    init_points=0,
+    n_iter=10)
+
+print("\nMax params:")
+print(optimizer.max)
+# daily_prior_scale calculated as 10 ** daily_prior in prophet_f
+pbounds_red = {'daily_prior': (-2, 2), 'yearly_prior': (2, 2),
+               'hum_prior':   (-2, -2),    'dp_prior': (-2, -2)}
+
+optimizer.set_bounds(new_bounds=pbounds_red)
+
+optimizer.maximize(
+    init_points=0,
+    n_iter=10)
+
+print("\nMax params:")
+print(optimizer.max)
+print("Simple model:")
+display(df_p[['horizon','rmse','mae','mape']])
+m_opt, m_diags_opt = prophet_f(optimizer2.max['params']['daily_prior'], 
+                                 optimizer2.max['params']['yearly_prior'], 
+                                 optimizer2.max['params']['hum_prior'],
+                                 optimizer2.max['params']['dp_prior'],
+                                 metric='all',
+                                 period='250 hours')
+
+print("Bayesian optimised parameters:")
+m_diags_opt
+m_opt, m_diags_opt = prophet_f(optimizer.max['params']['daily_prior'], 
+                               optimizer.max['params']['yearly_prior'], 
+                               optimizer.max['params']['hum_prior'],
+                               optimizer.max['params']['dp_prior'],
+                               metric='all',
+                               period='250 hours')
+
+print("Bayesian optimised parameters:")
+m_diags_opt
+forecast_opt = m_opt.predict(df_test)
+fig3 = m_opt.plot_components(forecast_opt)
+notebook = "BayesOptProphetHyperparameters.ipynb"
+# !jupyter nbconvert --to script {notebook}
+# !jupyter nbconvert --execute --to html {notebook}
+# !jupyter nbconvert --execute --to pdf {notebook}
+# !jupyter nbconvert --to pdf {notebook}
+
+%rm history.txt
+%history -f history.txt
+
+!jupyter nbconvert --to python {notebook}
+sleep(5)
+!jupyter nbconvert --to markdown {notebook}
+sleep(5)
+!jupyter nbconvert --to html {notebook}
