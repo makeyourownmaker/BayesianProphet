@@ -1,24 +1,32 @@
 ```python
 %matplotlib inline
 
-import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from time import sleep
 from fbprophet import Prophet
+from fbprophet.diagnostics import cross_validation, performance_metrics
 from bayes_opt import BayesianOptimization
 
+# silence scipy/optimize/_numdiff.py:519: RuntimeWarnings
+import warnings; 
+warnings.simplefilter("ignore", RuntimeWarning)
+
+# silence prophet INFO messages
+import logging
+logging.getLogger('fbprophet').setLevel(logging.WARNING)
+
+import random
 random.seed(42)
 np.random.seed(42)
 ```
 
-    Importing plotly failed. Interactive plots will not work.
-
-
 # Bayesian Optimisation of Prophet Hyperparameters
 
-This notebook illustrates optimisation of continuous hyperparamaters of prophet models using the 
+This notebook illustrates optimisation of continuous hyperparamaters of 
+[prophet](https://facebook.github.io/prophet/) 
+time series models using the 
 [BayesianOptimization](https://github.com/fmfn/BayesianOptimization) package.
 
 The notebook is organised into the following sections:
@@ -413,9 +421,9 @@ Create train and test data.  Will perform [rolling origin forecasting](https://o
 
 
 ```python
-threshold = 2019
-df_test  = df[df['year'] >= threshold]
-df_train = df[df['year'] <  threshold]
+THRESHOLD = 2019
+df_test  = df[df['year'] >= THRESHOLD]
+df_train = df[df['year'] <  THRESHOLD]
 ```
 
 ---
@@ -423,22 +431,22 @@ df_train = df[df['year'] <  threshold]
 
 ## Build Simple Model
 
-First, start by building a simple model with flat growth and no weekly seasonality.  This is a quick sanity check.  Results should be similar to my previous R version.
+First, build a simple model with flat growth and no weekly seasonality.  This is a quick sanity check.  Results should be similar to my previous R version.
 
 One reason for using the python prophet version over R is to check the 
 [flat growth](https://facebook.github.io/prophet/docs/additional_topics.html#flat-trend-and-custom-trends)
 option, (only available in python), with 
 [linear and logistic growth I used earlier in R](https://github.com/makeyourownmaker/CambridgeTemperatureModel/blob/master/4.02-prophet.R).
 
-Seasonality mode defaults to additive for both daily and yearly.  Yearly seasonality is set to use 2 Fourier terms to enforce smooth annual cyclicality.  Yearly seasonality shows over-fitting if `yearly_seasonality='auto'` is used.
-It _may_ be better to use `yearly_seasonality='auto'` and tune `seasonality_prior_scale` instead of setting the number of Fourier terms.
+Seasonality mode defaults to additive for both daily and yearly.  Yearly seasonality is set to use 2 Fourier terms to enforce smooth annual cyclicality.  Yearly seasonality shows over-fitting if `yearly_seasonality = 'auto'` is used.
+It _may_ be better to use `yearly_seasonality = 'auto'` and tune `seasonality_prior_scale` instead of setting the number of Fourier terms.
 
 
 ```python
-m = Prophet(growth='flat',
-            daily_seasonality=True,
-            weekly_seasonality=False,
-            yearly_seasonality=2)
+m = Prophet(growth = 'flat',
+            daily_seasonality  = True,
+            weekly_seasonality = False,
+            yearly_seasonality = 2)
 m.fit(df_train);
 ```
 
@@ -450,8 +458,8 @@ Use `df_test` data created earlier to make forecast.  `df_test` contains data in
 
 ```python
 forecast = m.predict(df_test)
-pd.concat([forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().reset_index(drop=True), 
-           df_test['y'].tail().reset_index(drop=True)], axis=1)
+pd.concat([forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().reset_index(drop = True), 
+           df_test['y'].tail().reset_index(drop = True)], axis = 1)
 ```
 
 
@@ -487,40 +495,40 @@ pd.concat([forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().reset_ind
       <th>0</th>
       <td>2020-01-16 00:00:00</td>
       <td>17.667960</td>
-      <td>-29.847775</td>
-      <td>62.817637</td>
+      <td>-29.378573</td>
+      <td>63.475330</td>
       <td>40</td>
     </tr>
     <tr>
       <th>1</th>
       <td>2020-01-16 00:30:00</td>
       <td>16.180201</td>
-      <td>-29.955690</td>
-      <td>60.990527</td>
+      <td>-33.025993</td>
+      <td>62.335274</td>
       <td>36</td>
     </tr>
     <tr>
       <th>2</th>
       <td>2020-01-16 01:00:00</td>
       <td>14.807732</td>
-      <td>-31.797248</td>
-      <td>64.647189</td>
+      <td>-32.105470</td>
+      <td>60.216001</td>
       <td>36</td>
     </tr>
     <tr>
       <th>3</th>
       <td>2020-01-16 01:30:00</td>
       <td>13.508647</td>
-      <td>-32.661017</td>
-      <td>61.800024</td>
+      <td>-32.616116</td>
+      <td>61.920117</td>
       <td>36</td>
     </tr>
     <tr>
       <th>4</th>
       <td>2020-01-16 02:00:00</td>
       <td>12.256809</td>
-      <td>-31.535405</td>
-      <td>59.283150</td>
+      <td>-32.434217</td>
+      <td>59.606970</td>
       <td>36</td>
     </tr>
   </tbody>
@@ -568,29 +576,24 @@ fig2 = m.plot_components(forecast)
 Second, cross-validate the simple model to get some indication of performance.
 
 To perform [rolling origin forecasting](https://otexts.com/fpp2/accuracy.html#time-series-cross-validation) first build a prophet model on `df` instead of `df_train`.  
-Then run cross-validation on a horizon of 1 hour, starting with 90000 hours (over 10 years) of training data in the first cutoff and then making predictions every 1000 hours. On this 11 year time series, this corresponds to 11 total forecasts between 2018-11-25 09:00:00 and 2020-01-16 01:00:00.  This is a small validation set.
+Then run cross-validation on a horizon of 1 hour, starting with 90,000 hours (over 10 years) of training data in the first cutoff and then making predictions every 1,000 hours.  On this 11 year time series, this corresponds to 11 total forecasts between 2018-11-25 09:00:00 and 2020-01-16 01:00:00.  1,000 hours is used to get get a range of forecasts throughout the year.  This is a small validation set.
 
-I'm primarily interested in making "nowcasts" (forecasts in the next 1 to 2 hours) because I live very close to the data source and the UK met office only update the forecasts on their web site every 2 hours. 
+I'm primarily interested in making "nowcasts" (forecasts in the next 1 to 2 hours) because I live very close to the data source and the UK met office still only update the forecasts on their web site every 2 hours. 
 
 
 ```python
-from fbprophet.diagnostics import cross_validation, performance_metrics
-
-m = Prophet(growth='flat',
-            daily_seasonality=True,
-            weekly_seasonality=False,
-            yearly_seasonality=2)
+m = Prophet(growth = 'flat',
+            daily_seasonality  = True,
+            weekly_seasonality = False,
+            yearly_seasonality = 2)
 m.fit(df)
 
 df_cv = cross_validation(m,                                                  
-                         initial='90000 hours',
-                         period='1000 hours',
-                         horizon='1 hours')
+                         initial = '90000 hours',
+                         period  = '1000 hours',
+                         horizon = '1 hours')
 df_cv
 ```
-
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
 
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
@@ -633,8 +636,8 @@ df_cv
       <th>0</th>
       <td>2018-11-25 09:30:00</td>
       <td>69.739130</td>
-      <td>19.884369</td>
-      <td>117.277538</td>
+      <td>21.225443</td>
+      <td>115.230298</td>
       <td>40</td>
       <td>2018-11-25 09:00:00</td>
     </tr>
@@ -642,8 +645,8 @@ df_cv
       <th>1</th>
       <td>2018-11-25 10:00:00</td>
       <td>74.736026</td>
-      <td>26.711922</td>
-      <td>122.259926</td>
+      <td>29.584274</td>
+      <td>123.286474</td>
       <td>44</td>
       <td>2018-11-25 09:00:00</td>
     </tr>
@@ -651,8 +654,8 @@ df_cv
       <th>2</th>
       <td>2019-01-06 01:30:00</td>
       <td>14.903101</td>
-      <td>-29.389721</td>
-      <td>59.957277</td>
+      <td>-29.493593</td>
+      <td>60.849929</td>
       <td>32</td>
       <td>2019-01-06 01:00:00</td>
     </tr>
@@ -660,8 +663,8 @@ df_cv
       <th>3</th>
       <td>2019-01-06 02:00:00</td>
       <td>13.648006</td>
-      <td>-28.144470</td>
-      <td>58.607385</td>
+      <td>-33.299961</td>
+      <td>60.705452</td>
       <td>32</td>
       <td>2019-01-06 01:00:00</td>
     </tr>
@@ -669,8 +672,8 @@ df_cv
       <th>4</th>
       <td>2019-02-16 17:30:00</td>
       <td>60.864809</td>
-      <td>16.395474</td>
-      <td>109.247482</td>
+      <td>15.346603</td>
+      <td>106.657746</td>
       <td>92</td>
       <td>2019-02-16 17:00:00</td>
     </tr>
@@ -678,8 +681,8 @@ df_cv
       <th>5</th>
       <td>2019-02-16 18:00:00</td>
       <td>57.318057</td>
-      <td>13.104304</td>
-      <td>104.092568</td>
+      <td>12.193294</td>
+      <td>103.565412</td>
       <td>88</td>
       <td>2019-02-16 17:00:00</td>
     </tr>
@@ -687,8 +690,8 @@ df_cv
       <th>6</th>
       <td>2019-03-30 09:30:00</td>
       <td>78.062718</td>
-      <td>31.079447</td>
-      <td>124.812803</td>
+      <td>36.138679</td>
+      <td>122.136545</td>
       <td>123</td>
       <td>2019-03-30 09:00:00</td>
     </tr>
@@ -696,8 +699,8 @@ df_cv
       <th>7</th>
       <td>2019-03-30 10:00:00</td>
       <td>83.093376</td>
-      <td>35.050668</td>
-      <td>129.022228</td>
+      <td>36.629363</td>
+      <td>129.146752</td>
       <td>141</td>
       <td>2019-03-30 09:00:00</td>
     </tr>
@@ -705,8 +708,8 @@ df_cv
       <th>8</th>
       <td>2019-05-11 01:30:00</td>
       <td>91.757079</td>
-      <td>46.765174</td>
-      <td>135.244288</td>
+      <td>47.053125</td>
+      <td>138.943771</td>
       <td>56</td>
       <td>2019-05-11 01:00:00</td>
     </tr>
@@ -714,8 +717,8 @@ df_cv
       <th>9</th>
       <td>2019-05-11 02:00:00</td>
       <td>90.536030</td>
-      <td>44.309768</td>
-      <td>139.393141</td>
+      <td>44.973560</td>
+      <td>134.771269</td>
       <td>56</td>
       <td>2019-05-11 01:00:00</td>
     </tr>
@@ -723,8 +726,8 @@ df_cv
       <th>10</th>
       <td>2019-06-21 17:30:00</td>
       <td>177.967667</td>
-      <td>133.398878</td>
-      <td>223.433699</td>
+      <td>134.717885</td>
+      <td>225.012916</td>
       <td>186</td>
       <td>2019-06-21 17:00:00</td>
     </tr>
@@ -732,8 +735,8 @@ df_cv
       <th>11</th>
       <td>2019-06-21 18:00:00</td>
       <td>174.412222</td>
-      <td>128.890993</td>
-      <td>220.406266</td>
+      <td>129.988620</td>
+      <td>220.564409</td>
       <td>177</td>
       <td>2019-06-21 17:00:00</td>
     </tr>
@@ -741,8 +744,8 @@ df_cv
       <th>12</th>
       <td>2019-08-02 09:30:00</td>
       <td>183.581257</td>
-      <td>137.855582</td>
-      <td>228.725586</td>
+      <td>136.121930</td>
+      <td>226.609331</td>
       <td>186</td>
       <td>2019-08-02 09:00:00</td>
     </tr>
@@ -750,8 +753,8 @@ df_cv
       <th>13</th>
       <td>2019-08-02 10:00:00</td>
       <td>188.600265</td>
-      <td>141.070477</td>
-      <td>237.462060</td>
+      <td>141.584996</td>
+      <td>237.675696</td>
       <td>182</td>
       <td>2019-08-02 09:00:00</td>
     </tr>
@@ -759,8 +762,8 @@ df_cv
       <th>14</th>
       <td>2019-09-13 01:30:00</td>
       <td>126.944368</td>
-      <td>79.875884</td>
-      <td>174.356863</td>
+      <td>83.903198</td>
+      <td>173.625766</td>
       <td>155</td>
       <td>2019-09-13 01:00:00</td>
     </tr>
@@ -768,8 +771,8 @@ df_cv
       <th>15</th>
       <td>2019-09-13 02:00:00</td>
       <td>125.625959</td>
-      <td>78.915122</td>
-      <td>170.545562</td>
+      <td>82.166930</td>
+      <td>169.953435</td>
       <td>145</td>
       <td>2019-09-13 01:00:00</td>
     </tr>
@@ -777,8 +780,8 @@ df_cv
       <th>16</th>
       <td>2019-10-24 17:30:00</td>
       <td>117.622934</td>
-      <td>73.074388</td>
-      <td>164.331569</td>
+      <td>68.773212</td>
+      <td>161.759584</td>
       <td>88</td>
       <td>2019-10-24 17:00:00</td>
     </tr>
@@ -786,8 +789,8 @@ df_cv
       <th>17</th>
       <td>2019-10-24 18:00:00</td>
       <td>113.996222</td>
-      <td>68.131090</td>
-      <td>160.379466</td>
+      <td>69.434557</td>
+      <td>159.843390</td>
       <td>84</td>
       <td>2019-10-24 17:00:00</td>
     </tr>
@@ -795,8 +798,8 @@ df_cv
       <th>18</th>
       <td>2019-12-05 09:30:00</td>
       <td>60.190404</td>
-      <td>14.470598</td>
-      <td>105.778553</td>
+      <td>16.193022</td>
+      <td>109.027649</td>
       <td>12</td>
       <td>2019-12-05 09:00:00</td>
     </tr>
@@ -804,8 +807,8 @@ df_cv
       <th>19</th>
       <td>2019-12-05 10:00:00</td>
       <td>65.223833</td>
-      <td>22.867112</td>
-      <td>110.798999</td>
+      <td>19.819246</td>
+      <td>111.113055</td>
       <td>20</td>
       <td>2019-12-05 09:00:00</td>
     </tr>
@@ -813,8 +816,8 @@ df_cv
       <th>20</th>
       <td>2020-01-16 01:30:00</td>
       <td>13.998328</td>
-      <td>-34.842082</td>
-      <td>58.477476</td>
+      <td>-30.979692</td>
+      <td>60.627637</td>
       <td>36</td>
       <td>2020-01-16 01:00:00</td>
     </tr>
@@ -822,8 +825,8 @@ df_cv
       <th>21</th>
       <td>2020-01-16 02:00:00</td>
       <td>12.720485</td>
-      <td>-31.944373</td>
-      <td>58.185447</td>
+      <td>-36.195731</td>
+      <td>56.937607</td>
       <td>36</td>
       <td>2020-01-16 01:00:00</td>
     </tr>
@@ -836,7 +839,7 @@ df_cv
 
 ```python
 df_p = performance_metrics(df_cv)
-df_p[['horizon','rmse','mae','mape']]
+df_p[['horizon', 'rmse', 'mae', 'mape']]
 ```
 
 
@@ -915,26 +918,26 @@ These discrete hyperparameters were tuned:
 Final hyperparameters from 
 [R version](https://github.com/makeyourownmaker/CambridgeTemperatureModel/blob/master/4.02-prophet.R):
 ```R
-params <- data.frame(growth='linear',
-                     n.changepoints=0,
-                     daily.mode='multiplicative',
-                     yearly.mode='additive',
-                     daily.fo=2,
-                     yearly.fo=2,
-                     daily.prior=0.01,
-                     yearly.prior=0.01,
-                     dp.mode='multiplicative',
-                     hum.mode='multiplicative',
-                     dp.prior=0.01,
-                     hum.prior=0.01,
-                     stringsAsFactors=FALSE)
+params <- data.frame(growth = 'linear',
+                     n.changepoints = 0,
+                     daily.mode  = 'multiplicative',
+                     yearly.mode = 'additive',
+                     daily.fo  = 2,
+                     yearly.fo = 2,
+                     daily.prior  = 0.01,
+                     yearly.prior = 0.01,
+                     dp.mode   = 'multiplicative',
+                     hum.mode  = 'multiplicative',
+                     dp.prior  = 0.01,
+                     hum.prior = 0.01,
+                     stringsAsFactors = FALSE)
 ```
 
-When setting `n.changepoints=0` the trend often showed small amounts of postive or negative growth.
+When setting `n.changepoints = 0` the trend often showed small amounts of postive or negative growth.
 
 The seasonality and regressor priors were tuned over a small range of values \[0.01, 0.1, 1, 10\].
-The low number of Fourier terms and low prior values results in the seasonality components being dominated by the regressors.  This suggests the seasonality is not useful for such short-term forecasts.
-It will be interesting to see at what horizon seasonality becomes less dominated.  Alternatively, the tuning grid could be extended to 100 or higher.
+The low number of Fourier terms and low prior values results in the seasonality components being dominated by the regressors.  This suggests the seasonality is not crucial for such short-term forecasts.
+It will be interesting to see at what horizon seasonality becomes less dominated.  The tuning grid should be extended to 100 or higher.
 
 Nonetheless, these parameters give much improved results compared to the simple model above.
 
@@ -953,7 +956,7 @@ for a python grid search example.
 
 Fourth, tune the continuous parameters.
 
-Below I give an example of Bayesian optimisation of seasonality and regressor parameters.
+Below I give an example of Bayesian optimisation of prophet seasonality and regressor parameters.
 
 These continuous parameters are optimised:
  * daily_prior_scale
@@ -968,7 +971,7 @@ Next, I define the prophet model to optimise.
 
 
 ```python
-def prophet_f(daily_prior, yearly_prior, hum_prior, dp_prior, metric='rmse', period='1000 hours'):
+def prophet_f(daily_prior, yearly_prior, hum_prior, dp_prior, metric = 'rmse', period = '1000 hours'):
     """
     Implements the prophet model to be optimised and performs cross-validation
     
@@ -977,44 +980,46 @@ def prophet_f(daily_prior, yearly_prior, hum_prior, dp_prior, metric='rmse', per
         yearly_prior: yearly seasonality prior scale
         hum_prior:    humidity regressor prior scale 
         dp_prior:     dew.point regressor prior scale
+        metric:       metric(s) to return - 'rmse' or ['horizon', 'rmse', 'mae', 'mape']
+        period:       cross-validation period
 
     Returns:
         negative of root mean square error
     """
                      
-    m = Prophet(growth='flat',
-                weekly_seasonality=False)
+    m = Prophet(growth = 'flat',
+                weekly_seasonality = False)
     
-    m.add_seasonality(name='daily',
-                      period=1,
-                      fourier_order=2,
-                      mode='multiplicative',
-                      prior_scale=10 ** daily_prior)
-    m.add_seasonality(name='yearly',
-                      period=365.25,
-                      fourier_order=2,
-                      mode='additive',
-                      prior_scale=10 ** yearly_prior)
+    m.add_seasonality(name   = 'daily',
+                      period = 1,
+                      mode   = 'multiplicative',
+                      prior_scale   = 10 ** daily_prior,
+                      fourier_order = 2)
+    m.add_seasonality(name   = 'yearly',
+                      period = 365.25,
+                      mode   = 'additive',
+                      prior_scale   = 10 ** yearly_prior,
+                      fourier_order = 2)
     
     m.add_regressor('humidity',
-                    mode='multiplicative',
-                    prior_scale=10 ** hum_prior)
+                    mode = 'multiplicative',
+                    prior_scale = 10 ** hum_prior)
     m.add_regressor('dew.point',
-                    mode='multiplicative',
-                    prior_scale=10 ** dp_prior)
+                    mode = 'multiplicative',
+                    prior_scale = 10 ** dp_prior)
     
     m.fit(df)
     df_cv = cross_validation(m,                                                  
-                             initial='90000 hours',
-                             period=period,
-                             horizon='1 hours')
+                             initial = '90000 hours',
+                             period  = period,
+                             horizon = '1 hours')
     
     if metric == 'rmse':
         df_cv_rmse = ((df_cv.y - df_cv.yhat) ** 2).mean() ** .5
         return - df_cv_rmse
-    else:
+    elif metric == 'all':
         df_p = performance_metrics(df_cv)
-        return m, df_p[['horizon','rmse','mae','mape']]
+        return m, df_p[['horizon', 'rmse', 'mae', 'mape']]
     
 ```
 
@@ -1026,7 +1031,7 @@ Run time can be reduced by
  * increasing `period` (up to maximum of '15000 hours') in the `cross_validation` call in the `prophet_f` function above.
  
 **NOTE** It may be necessary to scroll down through the runtime messages to find the optimised parameters.
-Or, set `verbose=0` in the `BayesianOptimization` call below.
+Or, set `verbose = 0` in the `BayesianOptimization` call below.
 
 
 ```python
@@ -1035,15 +1040,15 @@ pbounds = {'daily_prior': (-2, 2), 'yearly_prior': (-2, 2),
            'hum_prior':   (-2, 2), 'dp_prior':     (-2, 2)}
 
 optimizer = BayesianOptimization(
-    f=prophet_f,
-    pbounds=pbounds,
-    verbose=2,  # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
-    random_state=1
+    f = prophet_f,
+    pbounds = pbounds,
+    verbose = 2,  # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
+    random_state = 1
 )
 
 optimizer.maximize(
-    init_points=10,
-    n_iter=10)
+    init_points = 10,
+    n_iter = 10)
 
 print("\nMax params:")
 print(optimizer.max)
@@ -1054,22 +1059,12 @@ print(optimizer.max)
     -------------------------------------------------------------------------
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
 
     
     | [0m 1       [0m | [0m-5.892   [0m | [0m-0.3319  [0m | [0m 0.8813  [0m | [0m-2.0     [0m | [0m-0.7907  [0m |
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1080,22 +1075,12 @@ print(optimizer.max)
     | [0m 2       [0m | [0m-5.894   [0m | [0m-1.413   [0m | [0m-1.631   [0m | [0m-1.255   [0m | [0m-0.6178  [0m |
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
 
     
     | [0m 3       [0m | [0m-5.896   [0m | [0m-0.4129  [0m | [0m 0.1553  [0m | [0m-0.3232  [0m | [0m 0.7409  [0m |
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1106,22 +1091,12 @@ print(optimizer.max)
     | [0m 4       [0m | [0m-5.893   [0m | [0m-1.182   [0m | [0m 1.512   [0m | [0m-1.89    [0m | [0m 0.6819  [0m |
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
 
     
     | [0m 5       [0m | [0m-5.896   [0m | [0m-0.3308  [0m | [0m 0.2348  [0m | [0m-1.438   [0m | [0m-1.208   [0m |
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1132,22 +1107,12 @@ print(optimizer.max)
     | [0m 6       [0m | [0m-5.896   [0m | [0m 1.203   [0m | [0m 1.873   [0m | [0m-0.7463  [0m | [0m 0.7693  [0m |
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
 
     
     | [0m 7       [0m | [0m-5.895   [0m | [0m 1.506   [0m | [0m 1.578   [0m | [0m-1.66    [0m | [0m-1.844   [0m |
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1158,22 +1123,12 @@ print(optimizer.max)
     | [0m 8       [0m | [0m-5.896   [0m | [0m-1.321   [0m | [0m 1.513   [0m | [0m-1.607   [0m | [0m-0.3156  [0m |
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
 
     
     | [0m 9       [0m | [0m-5.896   [0m | [0m 1.832   [0m | [0m 0.1327  [0m | [0m 0.7675  [0m | [0m-0.7379  [0m |
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1189,11 +1144,6 @@ print(optimizer.max)
      [-2.  2.]]
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -1205,11 +1155,6 @@ print(optimizer.max)
      [-2.  2.]
      [-2.  2.]
      [-2.  2.]]
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1225,11 +1170,6 @@ print(optimizer.max)
      [-2.  2.]]
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -1241,11 +1181,6 @@ print(optimizer.max)
      [-2.  2.]
      [-2.  2.]
      [-2.  2.]]
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1261,11 +1196,6 @@ print(optimizer.max)
      [-2.  2.]]
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -1277,11 +1207,6 @@ print(optimizer.max)
      [-2.  2.]
      [-2.  2.]
      [-2.  2.]]
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1297,11 +1222,6 @@ print(optimizer.max)
      [-2.  2.]]
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -1313,11 +1233,6 @@ print(optimizer.max)
      [-2.  2.]
      [-2.  2.]
      [-2.  2.]]
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1333,11 +1248,6 @@ print(optimizer.max)
      [-2.  2.]]
 
 
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -1349,11 +1259,6 @@ print(optimizer.max)
      [-2.  2.]
      [-2.  2.]
      [-2.  2.]]
-
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1375,14 +1280,14 @@ Anecdotally, it seemed like the Bayesian optimisation was bouncing around in a s
 
 ```python
 # daily_prior_scale calculated as 10 ** daily_prior in prophet_f
-pbounds_red = {'daily_prior': (-2, 2), 'yearly_prior': (2, 2),
-               'hum_prior':   (-2, -2),    'dp_prior': (-2, -2)}
+pbounds_red = {'daily_prior': (-2, 2),  'yearly_prior': (2, 2),
+               'hum_prior':   (-2, -2), 'dp_prior':     (-2, -2)}
 
-optimizer.set_bounds(new_bounds=pbounds_red)
+optimizer.set_bounds(new_bounds = pbounds_red)
 
 optimizer.maximize(
-    init_points=0,
-    n_iter=10)
+    init_points = 0,
+    n_iter = 10)
 
 print("\nMax params:")
 print(optimizer.max)
@@ -1398,131 +1303,6 @@ print(optimizer.max)
      [ 2.  2.]]
 
 
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -1534,131 +1314,6 @@ print(optimizer.max)
      [-2. -2.]
      [-2. -2.]
      [ 2.  2.]]
-
-
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1674,131 +1329,6 @@ print(optimizer.max)
      [ 2.  2.]]
 
 
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -1810,131 +1340,6 @@ print(optimizer.max)
      [-2. -2.]
      [-2. -2.]
      [ 2.  2.]]
-
-
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -1950,131 +1355,6 @@ print(optimizer.max)
      [ 2.  2.]]
 
 
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -2086,131 +1366,6 @@ print(optimizer.max)
      [-2. -2.]
      [-2. -2.]
      [ 2.  2.]]
-
-
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -2226,131 +1381,6 @@ print(optimizer.max)
      [ 2.  2.]]
 
 
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -2362,149 +1392,6 @@ print(optimizer.max)
      [-2. -2.]
      [-2. -2.]
      [ 2.  2.]]
-
-
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -2520,131 +1407,6 @@ print(optimizer.max)
      [ 2.  2.]]
 
 
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
-
-
 
     HBox(children=(FloatProgress(value=0.0, max=11.0), HTML(value='')))
 
@@ -2656,131 +1418,6 @@ print(optimizer.max)
      [-2. -2.]
      [-2. -2.]
      [ 2.  2.]]
-
-
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    /usr/local/lib/python3.8/site-packages/scipy/optimize/_numdiff.py:519: RuntimeWarning: invalid value encountered in true_divide
-      J_transposed[i] = df / dx
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 11 forecasts with cutoffs between 2018-11-25 09:00:00 and 2020-01-16 01:00:00
 
 
 
@@ -2795,16 +1432,16 @@ print(optimizer.max)
     {'target': -5.8830215248022, 'params': {'daily_prior': 0.7832480635982564, 'dp_prior': -2.0, 'hum_prior': -2.0, 'yearly_prior': 2.0}}
 
 
-### Compare optimised model with earlier models
-
 There was a marginal improvement in rmse value from setting new bounds to optimise only `daily_prior`.  We are firmly into the _micro-optimisation theatre_ regime, so time to stop optimisation.
+
+### Compare optimised model with earlier models
 
 How does the optimised model compare with the earlier models?
 
 
 ```python
 print("Simple model:")
-display(df_p[['horizon','rmse','mae','mape']])
+display(df_p[['horizon', 'rmse', 'mae', 'mape']])
 ```
 
     Simple model:
@@ -2869,26 +1506,68 @@ m_opt, m_diags_opt = prophet_f(optimizer.max['params']['daily_prior'],
                                optimizer.max['params']['yearly_prior'], 
                                optimizer.max['params']['hum_prior'],
                                optimizer.max['params']['dp_prior'],
-                               metric='all',
-                               period='250 hours')
+                               metric = 'all',
+                               period = '250 hours')
 
-print("Bayesian optimised parameters:")
+print("Model with Bayesian optimised parameters:")
 m_diags_opt
 ```
-
-    INFO:fbprophet:Found custom seasonality named 'yearly', disabling built-in 'yearly' seasonality.
-    INFO:fbprophet:Found custom seasonality named 'daily', disabling built-in 'daily' seasonality.
-    INFO:fbprophet:Making 42 forecasts with cutoffs between 2018-11-14 23:00:00 and 2020-01-16 01:00:00
-
 
 
     HBox(children=(FloatProgress(value=0.0, max=42.0), HTML(value='')))
 
 
+    
+    Bayesian optimised parameters:
 
-```python
-pd.DataFrame(m_diags_opt.mean()[['rmse','mae','mape']])
-```
+
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>horizon</th>
+      <th>rmse</th>
+      <th>mae</th>
+      <th>mape</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>00:30:00</td>
+      <td>6.878412</td>
+      <td>4.847572</td>
+      <td>0.073778</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>01:00:00</td>
+      <td>10.261053</td>
+      <td>5.267301</td>
+      <td>0.071958</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
 
 ### Plot components of forecast from optimised model
 
@@ -2900,6 +1579,18 @@ forecast_opt = m_opt.predict(df_test)
 fig3 = m_opt.plot_components(forecast_opt)
 ```
 
+    /usr/local/lib/python3.8/site-packages/fbprophet/plot.py:422: UserWarning: FixedFormatter should only be used together with FixedLocator
+      ax.set_yticklabels(yticklabels)
+    /usr/local/lib/python3.8/site-packages/fbprophet/plot.py:422: UserWarning: FixedFormatter should only be used together with FixedLocator
+      ax.set_yticklabels(yticklabels)
+
+
+
+    
+![png](BayesOptProphetHyperparameters_files/BayesOptProphetHyperparameters_29_1.png)
+    
+
+
 ---
 
 ## Conclusion
@@ -2908,8 +1599,8 @@ Findings:
  * Bayesian optimised parameters
    * it's notable that `yearly_prior` has converged to the maximum limit (2) and `dp_prior` plus `hum_prior` converged to the lower limit (-2)
  * Components
-   * yearly and daily seasonalities appear overfitted to me
-     * I would expect a smooth cycle with a single maximum and a single minimum
+   * yearly and daily seasonalities appear overfitted
+     * I would expect a smooth cycle between the maximum and minimum values
    * there may be some seasonality present in the extra regressors
      * check for seasonality in performance of the model
  * Diagnostics
@@ -2920,16 +1611,16 @@ Findings:
      * I used a more restricted parameter range in the R grid search
      * a comparable grid would be [0.01, 0.1, 0, 1, 10, 100] meaning potentially 625 (5 ** 4) model evaluations for these 4 continuous parameters
      * this compares well with the 30 model evaluations performed for Bayesian optimisation
-   * a comparable random search may not give better results than Bayesian optimisation
+   * presumably a comparable random search would not give better results than Bayesian optimisation
 
 It's disappointing that the Bayesian optimised model has worse performance than the 
 [simple exponential smoothing baseline model](https://github.com/makeyourownmaker/CambridgeTemperatureModel#one-step-ahead-baselines) :-(
 
 Future work could include:
- * Plot individual affect of each regressor as done in this [weather related prophet notebook](https://nbviewer.jupyter.org/github/nicolasfauchereau/Auckland_Cycling/blob/master/notebooks/Auckland_cycling_and_weather.ipynb)
+ * Plot individual effect of each regressor as done in this [weather related prophet notebook](https://nbviewer.jupyter.org/github/nicolasfauchereau/Auckland_Cycling/blob/master/notebooks/Auckland_cycling_and_weather.ipynb)
  * Consider deseasonalising the regressors
  * Explore addition of lagged regressors
- * Expand horizon to 2 hours
+ * Expand cross-validation horizon to 2 hours
    * limited to 1 hour here to reduce compute time
  * Plot optimisation progress
    * the bayes_opt package does not include any built-in plots
@@ -2968,6 +1659,18 @@ sleep(5)
 !jupyter nbconvert --to html {notebook}
 ```
 
+    [NbConvertApp] Converting notebook BayesOptProphetHyperparameters.ipynb to python
+    [NbConvertApp] Writing 18804 bytes to BayesOptProphetHyperparameters.py
+    [NbConvertApp] Converting notebook BayesOptProphetHyperparameters.ipynb to markdown
+    [NbConvertApp] Support files will be in BayesOptProphetHyperparameters_files/
+    [NbConvertApp] Making directory BayesOptProphetHyperparameters_files
+    [NbConvertApp] Making directory BayesOptProphetHyperparameters_files
+    [NbConvertApp] Making directory BayesOptProphetHyperparameters_files
+    [NbConvertApp] Writing 46404 bytes to BayesOptProphetHyperparameters.md
+    [NbConvertApp] Converting notebook BayesOptProphetHyperparameters.ipynb to html
+    [NbConvertApp] Writing 907038 bytes to BayesOptProphetHyperparameters.html
+
+
 ---
 
 ## Metadata
@@ -2990,6 +1693,15 @@ print(sys.version)
 print("\nIPython version:")
 print(IPython.__version__)
 ```
+
+    Python version:
+    /usr/local/opt/python@3.8/bin/python3.8
+    3.8.6 (default, Oct  8 2020, 14:17:19) 
+    [Clang 10.0.0 (clang-1000.11.45.5)]
+    
+    IPython version:
+    7.19.0
+
 
 
 ```python
@@ -3031,12 +1743,51 @@ for m in pkg_resources.working_set:
     if m.project_name in imports and m.project_name != "pip":
         requirements.append((m.project_name, m.version))
 
-reqs = pd.DataFrame(requirements, columns=['name', 'version'])
+reqs = pd.DataFrame(requirements, columns = ['name', 'version'])
 print("Imported modules:")
 reqs.style.hide_index()
 ```
+
+    Imported modules:
+
+
+
+
+
+<style  type="text/css" >
+</style><table id="T_b382e4c0_5767_11eb_ba3b_542696cf5333" ><thead>    <tr>        <th class="col_heading level0 col0" >name</th>        <th class="col_heading level0 col1" >version</th>    </tr></thead><tbody>
+                <tr>
+                                <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row0_col0" class="data row0 col0" >pandas</td>
+                        <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row0_col1" class="data row0 col1" >1.0.5</td>
+            </tr>
+            <tr>
+                                <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row1_col0" class="data row1 col0" >numpy</td>
+                        <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row1_col1" class="data row1 col1" >1.19.1</td>
+            </tr>
+            <tr>
+                                <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row2_col0" class="data row2 col0" >notebook</td>
+                        <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row2_col1" class="data row2 col1" >6.1.6</td>
+            </tr>
+            <tr>
+                                <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row3_col0" class="data row3 col0" >matplotlib</td>
+                        <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row3_col1" class="data row3 col1" >3.3.1</td>
+            </tr>
+            <tr>
+                                <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row4_col0" class="data row4 col0" >fbprophet</td>
+                        <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row4_col1" class="data row4 col1" >0.7.1</td>
+            </tr>
+            <tr>
+                                <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row5_col0" class="data row5 col0" >bayesian-optimization</td>
+                        <td id="T_b382e4c0_5767_11eb_ba3b_542696cf5333row5_col1" class="data row5 col1" >1.2.0</td>
+            </tr>
+    </tbody></table>
+
+
 
 
 ```python
 !date
 ```
+
+    Fri Jan 15 19:27:28 GMT 2021
+
