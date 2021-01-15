@@ -26,7 +26,10 @@ pip install -r requirements.txt
 
 After the above dependencies have been installed either,
  * clone the repository and open the notebook(s) in a local installation of Jupyter, or
- * run notebook(s) on NBViewer, MyBinder or Colab.
+ * run notebook(s) on
+   * [NBViewer](https://nbviewer.jupyter.org/github/makeyourownmaker/BayesianProphet/blob/main/notebooks/BayesOptProphetHyperparameters.ipynb)
+   * Colab
+   * MyBinder
 
 
 ## Details
@@ -45,7 +48,7 @@ the [UK met office](https://www.metoffice.gov.uk/) only update their public
 facing forecasts every 2 hours.
 
 The python prophet implementation has a few advantages over the R 
-implementation.  I'm particularly interested in 
+implementation.  I'm interested in
 [forcing trend growth to be flat](https://facebook.github.io/prophet/docs/additional_topics.html#flat-trend-and-custom-trends).
 The already mentioned R prophet model has strong seasonality and
 using zero changepoints usually results in either slightly 
@@ -70,7 +73,7 @@ results to random search in less time.
 
 ## Roadmap
 
- * Add links to run notebook(s) on NBViewer, MyBinder and Colab
+ * Add links to run notebook(s) on MyBinder and Colab
 
  * Expand documentation:
    * Include highlights from notebook(s)
