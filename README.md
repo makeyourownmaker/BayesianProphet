@@ -26,11 +26,11 @@ pip install -r requirements.txt
 
 After the above dependencies have been installed either,
  * clone the repository and open the notebook(s) in a local installation of Jupyter, or
- * try notebook(s) on
-   * Run the notebook on [Colab](https://colab.research.google.com/github/makeyourownmaker/BayesianProphet/blob/main/notebooks/BayesOptProphetHyperparameters.ipynb)
-   * Run the notebook on [MyBinder](https://mybinder.org/v2/gh/makeyourownmaker/BayesianProphet/main?filepath=notebooks%2FBayesOptProphetHyperparameters.ipynb)
-   * View the notebook on [NBViewer](https://nbviewer.jupyter.org/github/makeyourownmaker/BayesianProphet/blob/main/notebooks/BayesOptProphetHyperparameters.ipynb)
-   * View the notebook on [GitHub](https://github.com/makeyourownmaker/BayesianProphet/blob/main/notebooks/BayesOptProphetHyperparameters.ipynb)
+ * try notebook(s) remotely
+   * run on [Colab](https://colab.research.google.com/github/makeyourownmaker/BayesianProphet/blob/main/notebooks/BayesOptProphetHyperparameters.ipynb)
+   * run on [MyBinder](https://mybinder.org/v2/gh/makeyourownmaker/BayesianProphet/main?filepath=notebooks%2FBayesOptProphetHyperparameters.ipynb)
+   * view on [NBViewer](https://nbviewer.jupyter.org/github/makeyourownmaker/BayesianProphet/blob/main/notebooks/BayesOptProphetHyperparameters.ipynb)
+   * view on [GitHub](https://github.com/makeyourownmaker/BayesianProphet/blob/main/notebooks/BayesOptProphetHyperparameters.ipynb)
 
 
 ## Details
