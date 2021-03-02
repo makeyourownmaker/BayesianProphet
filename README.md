@@ -102,6 +102,8 @@ which covers Bayesian optimisation of prophet models in R.
 
 [Cambridge University Computer Laboratory Weather Station R Shiny Web App](https://github.com/makeyourownmaker/ComLabWeatherShiny)
 
+[Time series and other models for Cambridge UK temperature forecasts in python](https://github.com/makeyourownmaker/CambridgeTemperatureNotebooks)
+
 
 ## License
 
