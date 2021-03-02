@@ -74,6 +74,7 @@ results to random search in less time.
 
 ## Roadmap
 
+ * Update data to include 2020
  * Expand documentation:
    * Include highlights from notebook(s)
    * Summarise the best prophet model including parameters and cross-validation results
