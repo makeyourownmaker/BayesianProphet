@@ -75,6 +75,12 @@ results to random search in less time.
 ## Roadmap
 
  * Update data to include 2020
+ * Add standard deviations to MSE, MAE and MAPE values
+ * Examine [Global Forecast System](https://www.ncdc.noaa.gov/data-access/model-data/model-datasets/global-forcast-system-gfs) (GFS) weather model
+   * runs four times a day, produces forecasts up to 16 days in advance
+   * data is available for free in the public domain
+   * model serves as the basis for the forecasts of numerous services
+   * potentially use as additional exogeneous variables
  * Expand documentation:
    * Include highlights from notebook(s)
    * Summarise the best prophet model including parameters and cross-validation results
