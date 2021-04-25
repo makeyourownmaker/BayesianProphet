@@ -9,7 +9,7 @@ Bayesian optimisation of prophet temperature model with daily and yearly seasona
 
 If you like BayesianProphet, give it a star, or fork it and contribute!
 
-Prophet decomposition showing trend plus daily and yearly seasonality in
+Prophet decomposition showing trend plus yearly and daily seasonality in
 Cambridge UK temperature observations:
 
 ![](https://github.com/makeyourownmaker/BayesianProphet/blob/main/figures/ProphetDecomposition.01.png)
